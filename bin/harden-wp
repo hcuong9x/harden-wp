@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+# Modular WordPress hardening entrypoint.
+
+set -Eeuo pipefail
+
+SCRIPT_NAME="${0##*/}"
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+MODE="harden"
+STACK=""
+DOMAIN=""
+WEBROOT=""
+WP_CONFIG=""
+OWNER_SPEC=""
+OWNER_SOURCE=""
+SNAPSHOT_FILE=""
+BASELINE_FILE=""
+
+YES=0
+STRICT=0
+DRY_RUN=0
+SKIP_CHOWN=0
+NO_SNAPSHOT=0
+RELOAD_NGINX=1
+WARNINGS=0
+
+# shellcheck source=../lib/common.sh
+. "$APP_DIR/lib/common.sh"
+# shellcheck source=../lib/paths.sh
+. "$APP_DIR/lib/paths.sh"
+# shellcheck source=../lib/snapshot.sh
+. "$APP_DIR/lib/snapshot.sh"
+# shellcheck source=../lib/permissions.sh
+. "$APP_DIR/lib/permissions.sh"
+# shellcheck source=../lib/webserver.sh
+. "$APP_DIR/lib/webserver.sh"
+# shellcheck source=../lib/wp_config.sh
+. "$APP_DIR/lib/wp_config.sh"
+# shellcheck source=../lib/scan.sh
+. "$APP_DIR/lib/scan.sh"
+# shellcheck source=../lib/immutable.sh
+. "$APP_DIR/lib/immutable.sh"
+# shellcheck source=../lib/integrity.sh
+. "$APP_DIR/lib/integrity.sh"
+
+usage() {
+  cat <<EOF
+Usage:
+  sudo bash $SCRIPT_NAME --mode harden --stack webinoly --domain example.com [options]
+  sudo bash $SCRIPT_NAME --mode harden --stack tino --domain example.com [options]
+  sudo bash $SCRIPT_NAME --mode harden --stack custom --webroot PATH [options]
+
+Modes:
+  harden              Lock WordPress code and write webserver protections
+  unlock-update       Temporarily unlock code so core/plugins/themes can update
+  scan                Report suspicious files and malware-like PHP patterns
+  snapshot            Save permission snapshot
+  restore-permission  Restore permission snapshot made by getfacl
+  immutable           Enable chattr +i on selected critical files
+  unimmutable         Disable chattr +i on selected critical files
+  baseline            Generate sha256 integrity baseline
+  verify-integrity    Verify a sha256 baseline
+
+Stacks:
+  webinoly            WEBROOT=/var/www/domain.com/htdocs
+                      WP_CONFIG=/var/www/domain.com/wp-config.php
+  tino                WEBROOT=/home/domain.com/public_html
+                      WP_CONFIG=WEBROOT/wp-config.php
+  ols                 WEBROOT=/home/www/domain.com/public_html
+                      WP_CONFIG=WEBROOT/wp-config.php
+  custom              Pass --webroot and optionally --config
+
+Options:
+  --mode VALUE        harden | unlock-update | scan | snapshot |
+                      restore-permission | immutable | unimmutable |
+                      baseline | verify-integrity
+  --stack VALUE       webinoly | tino | ols | custom
+  --domain DOMAIN     Domain used to build default paths
+  --webroot PATH      Override WordPress source directory
+  --config PATH       Override wp-config.php path
+  --owner USER:GROUP  Override detected owner
+  --snapshot FILE     Snapshot file for snapshot/restore
+  --baseline FILE     Baseline file for baseline/verify-integrity
+  --strict            Also set DISALLOW_FILE_MODS in wp-config.php
+  --yes, -y           Continue when WordPress markers are missing
+  --dry-run           Print commands without changing files
+  --no-chown          Skip chown; useful for local tests
+  --no-snapshot       Do not auto-create snapshot during harden
+  --no-nginx-reload   Do not nginx -t/reload after Webinoly rule changes
+  -h, --help          Show this help
+EOF
+}
+
+parse_args() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --mode)
+        need_value "$1" "${2:-}"
+        MODE="$2"
+        shift 2
+        ;;
+      --stack|--type)
+        need_value "$1" "${2:-}"
+        STACK="$2"
+        shift 2
+        ;;
+      --domain)
+        need_value "$1" "${2:-}"
+        DOMAIN="$2"
+        shift 2
+        ;;
+      --webroot)
+        need_value "$1" "${2:-}"
+        WEBROOT="$2"
+        shift 2
+        ;;
+      --config|--wp-config)
+        need_value "$1" "${2:-}"
+        WP_CONFIG="$2"
+        shift 2
+        ;;
+      --owner)
+        need_value "$1" "${2:-}"
+        OWNER_SPEC="$2"
+        OWNER_SOURCE="manual --owner"
+        shift 2
+        ;;
+      --snapshot)
+        need_value "$1" "${2:-}"
+        SNAPSHOT_FILE="$2"
+        shift 2
+        ;;
+      --baseline)
+        need_value "$1" "${2:-}"
+        BASELINE_FILE="$2"
+        shift 2
+        ;;
+      --strict)
+        STRICT=1
+        shift
+        ;;
+      --yes|-y)
+        YES=1
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      --no-chown)
+        SKIP_CHOWN=1
+        shift
+        ;;
+      --no-snapshot)
+        NO_SNAPSHOT=1
+        shift
+        ;;
+      --no-nginx-reload)
+        RELOAD_NGINX=0
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Invalid option: $1"
+        ;;
+    esac
+  done
+}
+
+validate_mode() {
+  case "$MODE" in
+    harden|unlock-update|scan|snapshot|restore-permission|immutable|unimmutable|baseline|verify-integrity)
+      ;;
+    *)
+      die "--mode must be harden, unlock-update, scan, snapshot, restore-permission, immutable, unimmutable, baseline, or verify-integrity"
+      ;;
+  esac
+}
+
+require_permissions_for_mode() {
+  case "$MODE" in
+    immutable|unimmutable)
+      require_root
+      ;;
+    harden|unlock-update|restore-permission)
+      if [ "$SKIP_CHOWN" -eq 0 ] && [ "${EUID:-$(id -u)}" -ne 0 ]; then
+        die "Run with root/sudo, or pass --no-chown for local tests on files you own."
+      fi
+      ;;
+  esac
+}
+
+print_context() {
+  info "Context"
+  printf 'MODE         : %s\n' "$MODE"
+  printf 'STACK        : %s\n' "$STACK"
+  printf 'WEBROOT      : %s\n' "$WEBROOT"
+  printf 'WP_CONFIG    : %s\n' "$WP_CONFIG"
+  printf 'OWNER        : %s\n' "${OWNER_SPEC:-not detected}"
+  printf 'OWNER_SOURCE : %s\n' "${OWNER_SOURCE:-n/a}"
+}
+
+run_harden() {
+  print_context
+
+  if [ "$NO_SNAPSHOT" -eq 0 ]; then
+    snapshot_permissions_optional
+  fi
+
+  ensure_writable_dirs
+  apply_owner
+  apply_base_permissions
+  apply_wp_config_hardening
+  apply_webserver_rules
+  apply_readonly_permissions
+  harden_wp_config
+
+  printf '\nDone.\n'
+  printf 'Writable: uploads, cache, upgrade, litespeed, ai1wm-backups when present.\n'
+  printf 'Read-only: wp-admin, wp-includes, themes, plugins, root code files.\n'
+  if [ "$STRICT" -eq 1 ]; then
+    printf 'Strict wp-config mode: DISALLOW_FILE_MODS enabled.\n'
+  fi
+}
+
+run_unlock_update() {
+  print_context
+  ensure_writable_dirs
+  apply_owner
+  apply_base_permissions
+  harden_wp_config
+
+  printf '\nDone.\n'
+  printf 'Code paths are unlocked for update. Run harden again after updates finish.\n'
+}
+
+main() {
+  parse_args "$@"
+  validate_mode
+  resolve_paths
+  validate_paths
+  detect_owner
+  require_permissions_for_mode
+
+  case "$MODE" in
+    harden)
+      run_harden
+      ;;
+    unlock-update)
+      run_unlock_update
+      ;;
+    scan)
+      print_context
+      scan_site
+      ;;
+    snapshot)
+      print_context
+      snapshot_permissions_required
+      ;;
+    restore-permission)
+      print_context
+      restore_permissions
+      ;;
+    immutable)
+      print_context
+      set_immutable +i
+      ;;
+    unimmutable)
+      print_context
+      set_immutable -i
+      ;;
+    baseline)
+      print_context
+      generate_integrity_baseline
+      ;;
+    verify-integrity)
+      print_context
+      verify_integrity_baseline
+      ;;
+  esac
+
+  if [ "$WARNINGS" -gt 0 ]; then
+    printf 'Warnings: %s item(s), review output above.\n' "$WARNINGS"
+  fi
+}
+
+main "$@"
