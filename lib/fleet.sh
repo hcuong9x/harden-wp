@@ -64,6 +64,35 @@ fleet_trim() {
   printf '%s' "$value"
 }
 
+fleet_array_len() {
+  local name="$1"
+  local restore_nounset=0
+  local count=0
+
+  case "$name" in
+    FLEET_DOMAINS|FLEET_DOMAIN_FILES|FLEET_WEBROOTS|FLEET_WEBROOT_FILES|FLEET_FORWARD_ARGS|FLEET_OK|FLEET_FAILED)
+      ;;
+    *)
+      die "Internal error: unsupported fleet array: $name"
+      ;;
+  esac
+
+  case "$-" in
+    *u*)
+      restore_nounset=1
+      set +u
+      ;;
+  esac
+
+  eval "count=\"\${#$name[@]}\""
+
+  if [ "$restore_nounset" -eq 1 ]; then
+    set -u
+  fi
+
+  printf '%s' "$count"
+}
+
 fleet_normalize_stack() {
   STACK="$(printf '%s' "$STACK" | tr '[:upper:]' '[:lower:]')"
 
@@ -125,7 +154,7 @@ fleet_add_domain() {
 
   fleet_validate_domain_name "$domain"
 
-  for existing in "${FLEET_DOMAINS[@]}"; do
+  for existing in "${FLEET_DOMAINS[@]+"${FLEET_DOMAINS[@]}"}"; do
     [ "$existing" != "$domain" ] || return 0
   done
 
@@ -147,7 +176,7 @@ fleet_add_webroot() {
 
   webroot="${webroot%/}"
 
-  for existing in "${FLEET_WEBROOTS[@]}"; do
+  for existing in "${FLEET_WEBROOTS[@]+"${FLEET_WEBROOTS[@]}"}"; do
     [ "$existing" != "$webroot" ] || return 0
   done
 
@@ -295,11 +324,11 @@ fleet_parse_args() {
 fleet_prepare_sites() {
   local file=""
 
-  for file in "${FLEET_DOMAIN_FILES[@]}"; do
+  for file in "${FLEET_DOMAIN_FILES[@]+"${FLEET_DOMAIN_FILES[@]}"}"; do
     fleet_read_domain_file "$file"
   done
 
-  for file in "${FLEET_WEBROOT_FILES[@]}"; do
+  for file in "${FLEET_WEBROOT_FILES[@]+"${FLEET_WEBROOT_FILES[@]}"}"; do
     fleet_read_webroot_file "$file"
   done
 
@@ -316,19 +345,19 @@ fleet_prepare_sites() {
   fi
 
   if [ "$STACK" = "custom" ]; then
-    [ "${#FLEET_DOMAINS[@]}" -eq 0 ] || die "--domain/--domains cannot be used with --stack custom; use --webroot/--webroots"
-    [ "${#FLEET_WEBROOTS[@]}" -gt 0 ] || die "--stack custom needs --webroot or --webroots"
+    [ "$(fleet_array_len FLEET_DOMAINS)" -eq 0 ] || die "--domain/--domains cannot be used with --stack custom; use --webroot/--webroots"
+    [ "$(fleet_array_len FLEET_WEBROOTS)" -gt 0 ] || die "--stack custom needs --webroot or --webroots"
   else
-    [ "${#FLEET_WEBROOTS[@]}" -eq 0 ] || die "--webroot/--webroots can only be used with --stack custom"
-    [ "${#FLEET_DOMAINS[@]}" -gt 0 ] || die "No domains discovered. Check the stack path or pass --domain/--domains explicitly."
+    [ "$(fleet_array_len FLEET_WEBROOTS)" -eq 0 ] || die "--webroot/--webroots can only be used with --stack custom"
+    [ "$(fleet_array_len FLEET_DOMAINS)" -gt 0 ] || die "No domains discovered. Check the stack path or pass --domain/--domains explicitly."
   fi
 }
 
 fleet_site_count() {
   if [ "$STACK" = "custom" ]; then
-    printf '%s' "${#FLEET_WEBROOTS[@]}"
+    fleet_array_len FLEET_WEBROOTS
   else
-    printf '%s' "${#FLEET_DOMAINS[@]}"
+    fleet_array_len FLEET_DOMAINS
   fi
 }
 
@@ -347,7 +376,9 @@ fleet_run_one() {
     cmd+=(--stack "$STACK" --domain "$domain")
   fi
 
-  cmd+=("${FLEET_FORWARD_ARGS[@]}")
+  if [ "$(fleet_array_len FLEET_FORWARD_ARGS)" -gt 0 ]; then
+    cmd+=("${FLEET_FORWARD_ARGS[@]+"${FLEET_FORWARD_ARGS[@]}"}")
+  fi
 
   printf '\n===== [%s/%s] %s =====\n' "$index" "$total" "$label"
 
@@ -371,11 +402,11 @@ fleet_run_one() {
 fleet_print_summary() {
   local item=""
 
-  printf '\nFleet summary: %s OK, %s failed\n' "${#FLEET_OK[@]}" "${#FLEET_FAILED[@]}"
+  printf '\nFleet summary: %s OK, %s failed\n' "$(fleet_array_len FLEET_OK)" "$(fleet_array_len FLEET_FAILED)"
 
-  if [ "${#FLEET_FAILED[@]}" -gt 0 ]; then
+  if [ "$(fleet_array_len FLEET_FAILED)" -gt 0 ]; then
     printf 'Failed sites:\n'
-    for item in "${FLEET_FAILED[@]}"; do
+    for item in "${FLEET_FAILED[@]+"${FLEET_FAILED[@]}"}"; do
       printf '  %s\n' "$item"
     done
   fi
@@ -393,7 +424,7 @@ fleet_run_all() {
   info "Fleet run: $total site(s), mode=$MODE, stack=$STACK"
 
   if [ "$STACK" = "custom" ]; then
-    for webroot in "${FLEET_WEBROOTS[@]}"; do
+    for webroot in "${FLEET_WEBROOTS[@]+"${FLEET_WEBROOTS[@]}"}"; do
       label="$webroot"
       site_status=0
       fleet_run_one "$index" "$total" "$label" "" "$webroot" || site_status=$?
@@ -401,7 +432,7 @@ fleet_run_all() {
       index=$((index + 1))
     done
   else
-    for domain in "${FLEET_DOMAINS[@]}"; do
+    for domain in "${FLEET_DOMAINS[@]+"${FLEET_DOMAINS[@]}"}"; do
       label="$domain"
       site_status=0
       fleet_run_one "$index" "$total" "$label" "$domain" "" || site_status=$?
@@ -412,7 +443,7 @@ fleet_run_all() {
 
   fleet_print_summary
 
-  [ "${#FLEET_FAILED[@]}" -eq 0 ] || return 1
+  [ "$(fleet_array_len FLEET_FAILED)" -eq 0 ] || return 1
 }
 
 fleet_main() {
