@@ -137,18 +137,50 @@ detect_owner_from_path() {
   return 1
 }
 
+fallback_owner_for_webinoly() {
+  [ "$STACK" = "webinoly" ] || return 0
+
+  case "$OWNER_SPEC" in
+    0:0|root:root)
+      if getent passwd www-data >/dev/null 2>&1 && getent group www-data >/dev/null 2>&1; then
+        info "Detected root-owned paths on Webinoly; using fallback owner www-data:www-data. Pass --owner to override."
+        OWNER_SPEC="www-data:www-data"
+        OWNER_SOURCE="webinoly fallback (detected root-owned paths)"
+      fi
+      ;;
+  esac
+}
+
 detect_owner() {
   if [ -n "$OWNER_SPEC" ]; then
     validate_owner_spec
     return
   fi
 
-  detect_owner_from_path "$WEBROOT/wp-load.php" && return
-  detect_owner_from_path "$WEBROOT/index.php" && return
-  detect_owner_from_path "$WEBROOT/wp-content" && return
-  detect_owner_from_path "$WEBROOT" && return
-  detect_owner_from_path "$WP_CONFIG" && return
-  detect_owner_from_path "$(dirname "$WEBROOT")" && return
+  if detect_owner_from_path "$WEBROOT/wp-load.php"; then
+    fallback_owner_for_webinoly
+    return
+  fi
+  if detect_owner_from_path "$WEBROOT/index.php"; then
+    fallback_owner_for_webinoly
+    return
+  fi
+  if detect_owner_from_path "$WEBROOT/wp-content"; then
+    fallback_owner_for_webinoly
+    return
+  fi
+  if detect_owner_from_path "$WEBROOT"; then
+    fallback_owner_for_webinoly
+    return
+  fi
+  if detect_owner_from_path "$WP_CONFIG"; then
+    fallback_owner_for_webinoly
+    return
+  fi
+  if detect_owner_from_path "$(dirname "$WEBROOT")"; then
+    fallback_owner_for_webinoly
+    return
+  fi
 
   if [ "$SKIP_CHOWN" -eq 1 ]; then
     OWNER_SPEC="$(id -u):$(id -g)"

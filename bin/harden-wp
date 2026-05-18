@@ -231,10 +231,10 @@ run_unlock_update() {
   ensure_writable_dirs
   apply_owner
   apply_base_permissions
-  harden_wp_config
 
   printf '\nDone.\n'
-  printf 'Code paths are unlocked for update. Run harden again after updates finish.\n'
+  printf 'Code paths are unlocked for update, including wp-config.php when present.\n'
+  printf 'Run harden again after updates finish.\n'
 }
 
 main() {
