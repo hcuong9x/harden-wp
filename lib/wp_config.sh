@@ -72,4 +72,8 @@ apply_wp_config_hardening() {
 
   mv "$tmp" "$WP_CONFIG"
   rm -f "$clean"
+
+  if [ "$SKIP_CHOWN" -eq 0 ]; then
+    try_run chown "$OWNER_SPEC" "$WP_CONFIG"
+  fi
 }
