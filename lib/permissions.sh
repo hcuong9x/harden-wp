@@ -5,6 +5,8 @@ PHP_BLOCK_DIRS=()
 
 collect_writable_dirs() {
   local wp_content="$WEBROOT/wp-content"
+  local ai1wm_plugin="$wp_content/plugins/all-in-one-wp-migration"
+  local ai1wm_storage="$ai1wm_plugin/storage"
 
   WRITABLE_DIRS=()
   WRITABLE_DIRS+=("$wp_content/uploads")
@@ -15,6 +17,10 @@ collect_writable_dirs() {
       WRITABLE_DIRS+=("$wp_content/$name")
     fi
   done
+
+  if [ -d "$ai1wm_plugin" ] || [ -d "$ai1wm_storage" ]; then
+    WRITABLE_DIRS+=("$ai1wm_storage")
+  fi
 }
 
 collect_php_block_dirs() {
@@ -36,8 +42,14 @@ collect_php_block_dirs() {
 }
 
 ensure_writable_dirs() {
+  local dir=""
+
   info "Ensure writable WordPress runtime directories"
-  ensure_dir "$WEBROOT/wp-content/uploads"
+  collect_writable_dirs
+
+  for dir in "${WRITABLE_DIRS[@]}"; do
+    ensure_dir "$dir"
+  done
 }
 
 apply_owner() {

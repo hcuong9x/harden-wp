@@ -9,7 +9,7 @@ This file maps the original proposal into maintainable modules.
 | Stack path detection | `lib/paths.sh` | Webinoly, Tino, OpenLiteSpeed, custom |
 | Owner detection | `lib/paths.sh` | Detects from real WordPress files, supports `--owner` |
 | Permission harden | `lib/permissions.sh` | Core/plugins/themes/root code readonly |
-| Writable whitelist | `lib/permissions.sh` | uploads always, cache/upgrade/litespeed/ai1wm when present |
+| Writable whitelist | `lib/permissions.sh` | uploads always, cache/upgrade/litespeed/ai1wm when present, plus All-in-One WP Migration storage |
 | Update unlock mode | `lib/permissions.sh` | `--mode unlock-update` |
 | PHP execution block | `lib/webserver.sh` | Runtime `.htaccess` and Webinoly nginx rules |
 | Sensitive file block | `lib/webserver.sh` | `.env`, `.git`, composer files, logs, readme/license |

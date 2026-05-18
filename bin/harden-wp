@@ -219,7 +219,7 @@ run_harden() {
   harden_wp_config
 
   printf '\nDone.\n'
-  printf 'Writable: uploads, cache, upgrade, litespeed, ai1wm-backups when present.\n'
+  printf 'Writable: uploads, cache, upgrade, litespeed, ai1wm-backups, All-in-One WP Migration storage when present.\n'
   printf 'Read-only: wp-admin, wp-includes, themes, plugins, root code files.\n'
   if [ "$STRICT" -eq 1 ]; then
     printf 'Strict wp-config mode: DISALLOW_FILE_MODS enabled.\n'

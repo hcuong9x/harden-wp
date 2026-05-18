@@ -223,6 +223,8 @@ or `--config`. Use `bin/harden-wp` for `restore-permission` and
 - keep runtime writable paths at `755/644`:
   - always `wp-content/uploads`
   - optional if present: `cache`, `litespeed`, `upgrade`, `ai1wm-backups`
+  - All-in-One WP Migration storage:
+    `wp-content/plugins/all-in-one-wp-migration/storage`
 - set `wp-config.php` to `400` (fallback `440` if needed)
 - insert/update hardening marker blocks:
   - root `.htaccess`
