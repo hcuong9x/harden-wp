@@ -5,20 +5,30 @@ and custom WordPress paths.
 
 ## What this script does
 
-- hardens file ownership and permissions for WordPress code
-- keeps runtime write paths writable (`uploads`, optional cache-like folders)
-- writes defensive `.htaccess` rules and optional Webinoly nginx rules
-- hardens `wp-config.php` constants and file mode
-- supports permission snapshot and restore
-- supports lightweight malware-oriented scan
-- supports immutable flag mode (`chattr +i` / `-i`)
-- supports sha256 integrity baseline and verification
+- resolves WordPress paths for Webinoly, Tino Script, OpenLiteSpeed, and
+  custom webroots
+- detects the WordPress file owner, or accepts an explicit `--owner`
+- hardens file ownership and permissions for WordPress core, plugins, themes,
+  root code files, and `wp-config.php`
+- keeps runtime write paths writable (`uploads`, optional cache/backup-like
+  folders) while blocking PHP execution inside them
+- writes defensive `.htaccess` rules and optional Webinoly nginx rules for
+  PHP execution, sensitive files, XML-RPC, and directory listing
+- hardens `wp-config.php` constants with `DISALLOW_FILE_EDIT`, and optionally
+  `DISALLOW_FILE_MODS` through `--strict`
+- supports permission snapshot and restore with `getfacl` / `setfacl`
+- supports lightweight malware-oriented reporting without auto-quarantine
+- supports immutable flag mode (`chattr +i` / `-i`) for selected critical files
+- supports sha256 integrity baseline generation and verification
+- supports fleet runs across many detected domains or declared custom webroots
 
 ## Project layout
 
 ```text
 harden-wp/
+  fleet.sh               Compatibility wrapper for the fleet runner
   bin/harden-wp          Main command
+  bin/fleet.sh           Multi-site fleet command
   lib/common.sh          Logging, command wrapper, marker block helper
   lib/paths.sh           Stack path resolution and owner detection
   lib/permissions.sh     chmod/chown harden and unlock logic
@@ -28,6 +38,7 @@ harden-wp/
   lib/snapshot.sh        getfacl snapshot and restore
   lib/immutable.sh       chattr +i / -i
   lib/integrity.sh       sha256 baseline and verify
+  lib/fleet.sh           Fleet discovery and per-site command runner
   tests/run-tests.sh     Local smoke test with a fake WordPress tree
 ```
 
@@ -37,13 +48,18 @@ If you are inside this repository directory:
 
 ```bash
 bash bin/harden-wp --help
+bash bin/fleet.sh --help
 ```
 
 If you are in the parent directory:
 
 ```bash
 bash harden-wp/bin/harden-wp --help
+bash harden-wp/bin/fleet.sh --help
 ```
+
+Use `bin/harden-wp` for one site. Use `bin/fleet.sh` when one server hosts many
+WordPress sites and the same operation should run across them.
 
 Use `sudo` for modes that change permissions, ownership, or file attributes.
 
@@ -130,6 +146,38 @@ Dry run:
 sudo bash bin/harden-wp --mode harden --stack webinoly --domain example.com --dry-run
 ```
 
+## Fleet commands
+
+`bin/fleet.sh` runs `bin/harden-wp` once per site and prints a final summary.
+For `webinoly`, `tino`, and `ols`, it can auto-discover sites from the default
+stack paths when no domain input is provided. For `custom`, pass webroots
+explicitly.
+
+Auto-discover all Webinoly sites and dry-run hardening:
+
+```bash
+sudo bash bin/fleet.sh --mode harden --stack webinoly --all --dry-run
+```
+
+Run scan for domains listed in a file:
+
+```bash
+bash bin/fleet.sh --mode scan --stack webinoly --domains domains.txt --yes --no-chown
+```
+
+Run scan for custom webroots listed in a file:
+
+```bash
+bash bin/fleet.sh --mode scan --stack custom --webroots webroots.txt --yes --no-chown
+```
+
+Supported fleet modes: `harden`, `unlock-update`, `scan`, `snapshot`,
+`immutable`, `unimmutable`, and `baseline`.
+
+Fleet does not accept per-site file options such as `--snapshot`, `--baseline`,
+or `--config`. Use `bin/harden-wp` for `restore-permission` and
+`verify-integrity`, because those modes need a specific per-site file.
+
 ## Key options
 
 | Option | Description |
@@ -148,6 +196,18 @@ sudo bash bin/harden-wp --mode harden --stack webinoly --domain example.com --dr
 | `--no-chown` | Skip ownership changes |
 | `--no-snapshot` | Skip automatic snapshot in `harden` mode |
 | `--no-nginx-reload` | Do not run `nginx -t` and reload after Webinoly rule write |
+
+## Fleet options
+
+| Option | Description |
+| --- | --- |
+| `--domain DOMAIN` | Add one domain; can be repeated |
+| `--domains FILE` | Read domains from a file, one per line; `# comments` allowed |
+| `--webroot PATH` | Add one custom WordPress webroot; can be repeated |
+| `--webroots FILE` | Read custom webroots from a file, one per line |
+| `--all`, `--discover` | Discover all sites from known stack paths |
+| `--continue-on-error` | Keep processing after a failed site; default behavior |
+| `--stop-on-error` | Stop at the first failed site |
 
 ## Harden behavior in detail
 

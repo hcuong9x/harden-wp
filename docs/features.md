@@ -22,6 +22,7 @@ This file maps the original proposal into maintainable modules.
 | Symlink scan | `lib/scan.sh` | Reports symlinks |
 | Immutable mode | `lib/immutable.sh` | `chattr +i` / `-i` for critical files |
 | Integrity baseline | `lib/integrity.sh` | `sha256sum` baseline and verify |
+| Fleet runner | `lib/fleet.sh`, `bin/fleet.sh` | Runs supported modes across all detected domains or declared webroots |
 | Local smoke test | `tests/run-tests.sh` | Builds a fake WordPress tree in `/tmp` |
 
 ## Intentionally Manual For Now
@@ -39,5 +40,4 @@ This file maps the original proposal into maintainable modules.
 | --- | --- |
 | `lib/quarantine.sh` | Move confirmed malware to quarantine with restore metadata |
 | `lib/vhost.sh` | Stack-specific disable/enable site actions |
-| `lib/fleet.sh` | Run the same mode across many domains from a list |
 | `tests/fixtures/` | More realistic fake WordPress layouts for each stack |
