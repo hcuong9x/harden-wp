@@ -15,7 +15,7 @@ This file maps the original proposal into maintainable modules.
 | Sensitive file block | `lib/webserver.sh` | `.env`, `.git`, composer files, logs, readme/license |
 | XML-RPC block | `lib/webserver.sh` | Webserver-level deny |
 | Directory listing off | `lib/webserver.sh` | `.htaccess` and nginx `autoindex off` |
-| wp-config harden | `lib/wp_config.sh` | `DISALLOW_FILE_EDIT`; `DISALLOW_FILE_MODS` with `--strict` |
+| wp-config harden | `lib/wp_config.sh` | `DISALLOW_FILE_EDIT`; `FS_METHOD=direct`; `DISALLOW_FILE_MODS` with `--strict` |
 | Permission snapshot | `lib/snapshot.sh` | Uses `getfacl` when available |
 | Permission restore | `lib/snapshot.sh` | Uses `setfacl --restore` |
 | Malware scan report | `lib/scan.sh` | PHP in runtime dirs, suspicious PHP patterns, recent files |

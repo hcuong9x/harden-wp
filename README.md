@@ -14,8 +14,8 @@ and custom WordPress paths.
   folders) while blocking PHP execution inside them
 - writes defensive `.htaccess` rules and optional Webinoly nginx rules for
   PHP execution, sensitive files, XML-RPC, and directory listing
-- hardens `wp-config.php` constants with `DISALLOW_FILE_EDIT`, and optionally
-  `DISALLOW_FILE_MODS` through `--strict`
+- hardens `wp-config.php` constants with `DISALLOW_FILE_EDIT` and
+  `FS_METHOD=direct`, and optionally `DISALLOW_FILE_MODS` through `--strict`
 - supports permission snapshot and restore with `getfacl` / `setfacl`
 - supports lightweight malware-oriented reporting without auto-quarantine
 - supports immutable flag mode (`chattr +i` / `-i`) for selected critical files
@@ -33,7 +33,7 @@ harden-wp/
   lib/paths.sh           Stack path resolution and owner detection
   lib/permissions.sh     chmod/chown harden and unlock logic
   lib/webserver.sh       .htaccess and Webinoly nginx rules
-  lib/wp_config.sh       DISALLOW_FILE_EDIT / optional DISALLOW_FILE_MODS
+  lib/wp_config.sh       DISALLOW_FILE_EDIT, FS_METHOD=direct, optional DISALLOW_FILE_MODS
   lib/scan.sh            Malware-oriented reporting
   lib/snapshot.sh        getfacl snapshot and restore
   lib/immutable.sh       chattr +i / -i

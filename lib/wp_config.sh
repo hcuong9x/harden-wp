@@ -7,6 +7,9 @@ wp_config_harden_block() {
 if (!defined('DISALLOW_FILE_EDIT')) {
     define('DISALLOW_FILE_EDIT', true);
 }
+if (!defined('FS_METHOD')) {
+    define('FS_METHOD', 'direct');
+}
 if (!defined('DISALLOW_FILE_MODS')) {
     define('DISALLOW_FILE_MODS', true);
 }
@@ -16,6 +19,9 @@ EOF
 // Managed by harden-wp.
 if (!defined('DISALLOW_FILE_EDIT')) {
     define('DISALLOW_FILE_EDIT', true);
+}
+if (!defined('FS_METHOD')) {
+    define('FS_METHOD', 'direct');
 }
 EOF
   fi
@@ -52,6 +58,13 @@ apply_wp_config_hardening() {
   ' "$WP_CONFIG" > "$clean"
 
   awk -v begin="$begin" -v end="$end" -v block="$block" '
+    /That.s all, stop editing! Happy publishing\./ && inserted != 1 {
+      print ""
+      print begin
+      print block
+      print end
+      inserted = 1
+    }
     /^[[:space:]]*\?>[[:space:]]*$/ && inserted != 1 {
       print ""
       print begin
